@@ -1,0 +1,12 @@
+{
+  "name": "backrooms-the-ultimate-monster",
+  "version": "1.0.0",
+  "main": "BACKROOMS-THE-ULTIMATE-MONSTER/server/server.js",
+  "scripts": {
+    "start": "node BACKROOMS-THE-ULTIMATE-MONSTER/server/server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
