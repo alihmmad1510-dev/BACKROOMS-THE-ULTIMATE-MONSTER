@@ -1,377 +1,127 @@
-
-
+const express = require("express");
 const http = require("http");
-const { WebSocketServer } = require("ws");
+const { Server } = require("socket.io");
 
-const PORT = process.env.PORT || 10000;
+const app = express();
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+app.get("/", (req, res) => {
+  res.send("BACKROOMS THE ULTIMATE MONSTER ONLINE SERVER");
+});
 
 const rooms = new Map();
 
-const httpServer = http.createServer((req, res) => {
-    res.writeHead(200, {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
-    });
+io.on("connection", (socket) => {
 
-    res.end(JSON.stringify({
-        game: "BACKROOMS THE ULTIMATE MONSTER",
-        online: true,
-        rooms: rooms.size
-    }));
-});
+  console.log("CONNECTED:", socket.id);
 
-const wss = new WebSocketServer({
-    server: httpServer
-});
+  socket.on("joinRoom", (data) => {
 
-function send(ws, data) {
-    if (ws.readyState === 1) {
-        ws.send(JSON.stringify(data));
+    const name = String(data?.name || "Player").slice(0, 18);
+    const room = String(data?.room || "ROOM-1").slice(0, 18);
+    const character = Number(data?.character) === 2 ? 2 : 1;
+
+    socket.join(room);
+
+    socket.data.room = room;
+    socket.data.name = name;
+
+    if (!rooms.has(room)) {
+      rooms.set(room, new Map());
     }
-}
 
-function broadcast(room, data, except = null) {
-    for (const player of room.players.values()) {
-        if (player.ws !== except) {
-            send(player.ws, data);
-        }
-    }
-}
-
-function createRoomCode() {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-    let code;
-
-    do {
-        code = "";
-
-        for (let i = 0; i < 5; i++) {
-            code += chars[
-                Math.floor(Math.random() * chars.length)
-            ];
-        }
-
-    } while (rooms.has(code));
-
-    return code;
-}
-
-function createPlayerId() {
-    return Math.random()
-        .toString(36)
-        .substring(2, 10);
-}
-
-function getPlayers(room) {
-    return [...room.players.values()].map(player => ({
-        id: player.id,
-        name: player.name,
-        character: player.character,
-
-        x: player.x,
-        y: player.y,
-        z: player.z,
-
-        rotationY: player.rotationY
-    }));
-}
-
-wss.on("connection", ws => {
+    const roomPlayers = rooms.get(room);
 
     const player = {
-        ws,
-
-        id: createPlayerId(),
-
-        room: null,
-
-        name: "Player",
-
-        character: "PLAYER1",
-
-        x: 0,
-        y: 0,
-        z: 5,
-
-        rotationY: 0
+      id: socket.id,
+      name,
+      room,
+      character,
+      x: 0,
+      y: 0,
+      z: 4,
+      rotationY: 0
     };
 
-    send(ws, {
-        type: "connected",
-        id: player.id
-    });
+    roomPlayers.set(socket.id, player);
 
-    ws.on("message", raw => {
+    socket.emit(
+      "roomPlayers",
+      [...roomPlayers.values()]
+    );
 
-        let data;
+    socket.to(room).emit(
+      "playerJoined",
+      player
+    );
 
-        try {
-            data = JSON.parse(raw.toString());
-        } catch {
-            return;
-        }
+    console.log(name, "joined", room);
+  });
 
-        if (data.type === "CREATE_ROOM") {
+  socket.on("updatePlayer", (data) => {
 
-            if (player.room) return;
+    const room = socket.data.room;
 
-            const code = createRoomCode();
+    if (!room || !rooms.has(room)) return;
 
-            const room = {
-                code,
+    const roomPlayers = rooms.get(room);
+    const player = roomPlayers.get(socket.id);
 
-                level: 0,
+    if (!player) return;
 
-                started: false,
+    player.x = Number(data?.x) || 0;
+    player.y = Number(data?.y) || 0;
+    player.z = Number(data?.z) || 0;
+    player.rotationY = Number(data?.rotationY) || 0;
 
-                players: new Map()
-            };
+    if (Number(data?.character) === 2) {
+      player.character = 2;
+    } else {
+      player.character = 1;
+    }
 
-            rooms.set(code, room);
+    socket.to(room).emit(
+      "playerUpdated",
+      player
+    );
+  });
 
-            player.room = code;
+  socket.on("disconnect", () => {
 
-            player.name =
-                String(data.name || "Player 1")
-                .substring(0, 20);
+    const room = socket.data.room;
 
-            player.character =
-                data.character === "PLAYER2"
-                    ? "PLAYER2"
-                    : "PLAYER1";
+    if (room && rooms.has(room)) {
 
-            room.players.set(
-                player.id,
-                player
-            );
+      const roomPlayers = rooms.get(room);
 
-            send(ws, {
-                type: "ROOM_CREATED",
+      roomPlayers.delete(socket.id);
 
-                room: code,
+      socket.to(room).emit(
+        "playerLeft",
+        socket.id
+      );
 
-                id: player.id,
+      if (roomPlayers.size === 0) {
+        rooms.delete(room);
+      }
+    }
 
-                players: getPlayers(room)
-            });
+    console.log("DISCONNECTED:", socket.id);
+  });
 
-            return;
-        }
-
-        if (data.type === "JOIN_ROOM") {
-
-            if (player.room) return;
-
-            const code =
-                String(data.room || "")
-                .trim()
-                .toUpperCase();
-
-            const room = rooms.get(code);
-
-            if (!room) {
-
-                send(ws, {
-                    type: "ERROR",
-                    message: "ROOM NOT FOUND"
-                });
-
-                return;
-            }
-
-            if (room.players.size >= 2) {
-
-                send(ws, {
-                    type: "ERROR",
-                    message: "ROOM IS FULL"
-                });
-
-                return;
-            }
-
-            player.room = code;
-
-            player.name =
-                String(data.name || "Player 2")
-                .substring(0, 20);
-
-            player.character =
-                data.character === "PLAYER1"
-                    ? "PLAYER1"
-                    : "PLAYER2";
-
-            room.players.set(
-                player.id,
-                player
-            );
-
-            send(ws, {
-                type: "ROOM_JOINED",
-
-                room: code,
-
-                id: player.id,
-
-                players: getPlayers(room)
-            });
-
-            broadcast(room, {
-                type: "PLAYERS",
-
-                players: getPlayers(room)
-            });
-
-            if (room.players.size >= 2) {
-
-                room.started = true;
-
-                broadcast(room, {
-                    type: "GAME_START",
-
-                    level: room.level
-                });
-
-            }
-
-            return;
-        }
-
-        if (data.type === "PLAYER_STATE") {
-
-            if (!player.room) return;
-
-            const room = rooms.get(player.room);
-
-            if (!room) return;
-
-            player.x = Number(data.x) || 0;
-            player.y = Number(data.y) || 0;
-            player.z = Number(data.z) || 5;
-
-            player.rotationY =
-                Number(data.rotationY) || 0;
-
-            broadcast(
-                room,
-
-                {
-                    type: "REMOTE_PLAYER",
-
-                    player: {
-                        id: player.id,
-
-                        name: player.name,
-
-                        character:
-                            player.character,
-
-                        x: player.x,
-                        y: player.y,
-                        z: player.z,
-
-                        rotationY:
-                            player.rotationY
-                    }
-                },
-
-                ws
-            );
-
-            return;
-        }
-
-        if (data.type === "START_GAME") {
-
-            if (!player.room) return;
-
-            const room =
-                rooms.get(player.room);
-
-            if (!room) return;
-
-            room.level =
-                Number(data.level) || 0;
-
-            room.started = true;
-
-            broadcast(room, {
-                type: "GAME_START",
-
-                level: room.level
-            });
-
-            send(player.ws, {
-                type: "GAME_START",
-
-                level: room.level
-            });
-
-            return;
-        }
-
-        if (data.type === "CHANGE_LEVEL") {
-
-            if (!player.room) return;
-
-            const room =
-                rooms.get(player.room);
-
-            if (!room) return;
-
-            room.level =
-                Number(data.level) || 0;
-
-            broadcast(room, {
-                type: "LEVEL_CHANGED",
-
-                level: room.level
-            });
-
-            return;
-        }
-    });
-
-    ws.on("close", () => {
-
-        if (!player.room) return;
-
-        const room =
-            rooms.get(player.room);
-
-        if (!room) return;
-
-        room.players.delete(
-            player.id
-        );
-
-        broadcast(room, {
-            type: "PLAYER_LEFT",
-
-            id: player.id,
-
-            players:
-                getPlayers(room)
-        });
-
-        if (room.players.size === 0) {
-
-            rooms.delete(
-                room.code
-            );
-
-        }
-    });
 });
 
-httpServer.listen(
-    PORT,
-    "0.0.0.0",
-    () => {
+const PORT = process.env.PORT || 3000;
 
-        console.log(
-            `BACKROOMS ONLINE SERVER: ${PORT}`
-        );
-
-    }
-);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(
+    `BACKROOMS SERVER RUNNING ON PORT ${PORT}`
+  );
+});
