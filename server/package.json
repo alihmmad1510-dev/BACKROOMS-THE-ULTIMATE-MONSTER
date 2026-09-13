@@ -1,7 +1,6 @@
 {
   "name": "backrooms-the-ultimate-monster",
   "version": "1.0.0",
-  "description": "BACKROOMS THE ULTIMATE MONSTER Online Multiplayer",
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js"
