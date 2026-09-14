@@ -12,116 +12,67 @@ const io = new Server(server, {
   }
 });
 
+const PORT = process.env.PORT || 3000;
+const players = new Map();
+
 app.get("/", (req, res) => {
-  res.send("BACKROOMS THE ULTIMATE MONSTER ONLINE SERVER");
+  res.json({
+    game: "SPACE FRONTIER 3D",
+    online: true,
+    players: players.size,
+    status: "Multiplayer server is running"
+  });
 });
 
-const rooms = new Map();
-
 io.on("connection", (socket) => {
+  const player = {
+    id: socket.id,
+    x: 0,
+    y: 0,
+    z: 0,
+    rx: 0,
+    ry: 0,
+    rz: 0,
+    character: "PLAYER1",
+    level: 0
+  };
 
-  console.log("CONNECTED:", socket.id);
+  players.set(socket.id, player);
 
-  socket.on("joinRoom", (data) => {
+  socket.emit("worldState", Array.from(players.values()));
+  socket.broadcast.emit("playerJoined", player);
 
-    const name = String(data?.name || "Player").slice(0, 18);
-    const room = String(data?.room || "ROOM-1").slice(0, 18);
-    const character = Number(data?.character) === 2 ? 2 : 1;
+  socket.on("playerUpdate", (data) => {
+    const current = players.get(socket.id);
+    if (!current || !data || typeof data !== "object") return;
 
-    socket.join(room);
-
-    socket.data.room = room;
-    socket.data.name = name;
-
-    if (!rooms.has(room)) {
-      rooms.set(room, new Map());
-    }
-
-    const roomPlayers = rooms.get(room);
-
-    const player = {
-      id: socket.id,
-      name,
-      room,
-      character,
-      x: 0,
-      y: 0,
-      z: 4,
-      rotationY: 0
+    const n = (value, fallback = 0) => {
+      const v = Number(value);
+      return Number.isFinite(v) ? v : fallback;
     };
 
-    roomPlayers.set(socket.id, player);
+    current.x = n(data.x);
+    current.y = n(data.y);
+    current.z = n(data.z);
+    current.rx = n(data.rx);
+    current.ry = n(data.ry);
+    current.rz = n(data.rz);
 
-    socket.emit(
-      "roomPlayers",
-      [...roomPlayers.values()]
-    );
-
-    socket.to(room).emit(
-      "playerJoined",
-      player
-    );
-
-    console.log(name, "joined", room);
-  });
-
-  socket.on("updatePlayer", (data) => {
-
-    const room = socket.data.room;
-
-    if (!room || !rooms.has(room)) return;
-
-    const roomPlayers = rooms.get(room);
-    const player = roomPlayers.get(socket.id);
-
-    if (!player) return;
-
-    player.x = Number(data?.x) || 0;
-    player.y = Number(data?.y) || 0;
-    player.z = Number(data?.z) || 0;
-    player.rotationY = Number(data?.rotationY) || 0;
-
-    if (Number(data?.character) === 2) {
-      player.character = 2;
-    } else {
-      player.character = 1;
+    if (typeof data.character === "string") {
+      current.character = data.character.slice(0, 32);
     }
 
-    socket.to(room).emit(
-      "playerUpdated",
-      player
-    );
+    current.level = Math.max(0, Math.floor(n(data.level)));
+
+    socket.broadcast.emit("playerUpdate", current);
   });
 
   socket.on("disconnect", () => {
-
-    const room = socket.data.room;
-
-    if (room && rooms.has(room)) {
-
-      const roomPlayers = rooms.get(room);
-
-      roomPlayers.delete(socket.id);
-
-      socket.to(room).emit(
-        "playerLeft",
-        socket.id
-      );
-
-      if (roomPlayers.size === 0) {
-        rooms.delete(room);
-      }
-    }
-
-    console.log("DISCONNECTED:", socket.id);
+    players.delete(socket.id);
+    socket.broadcast.emit("playerLeft", socket.id);
   });
-
 });
 
-const PORT = process.env.PORT || 3000;
-
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(
-    `BACKROOMS SERVER RUNNING ON PORT ${PORT}`
-  );
+  console.log(`SPACE FRONTIER 3D multiplayer server listening on port ${PORT}`);
 });
