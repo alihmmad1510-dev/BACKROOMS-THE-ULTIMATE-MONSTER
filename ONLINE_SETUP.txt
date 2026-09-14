@@ -1,0 +1,27 @@
+SPACE FRONTIER 3D - ONLINE MULTIPLAYER
+
+FOLDER:
+solar system/
+  index.html
+  online.js
+  server/
+    server.js
+    package.json
+  ...all existing game folders/files...
+
+RENDER:
+1. Create a Render Web Service.
+2. Use the files inside the "server" folder.
+3. Build Command: npm install
+4. Start Command: npm start
+5. Copy the Render URL.
+
+NETLIFY:
+The game can stay on Netlify.
+
+FIRST ONLINE CONNECTION:
+When you press ONLINE, the game asks for the Render URL.
+Enter it once. It is saved in localStorage.
+
+The game sends the local player's position and receives other players
+through Socket.IO in real time.
