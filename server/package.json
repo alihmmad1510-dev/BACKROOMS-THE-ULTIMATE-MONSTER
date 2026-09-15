@@ -1,13 +1,19 @@
 {
-  "name": "space-frontier-3d-online",
-  "version": "1.0.0",
-  "private": true,
+  "name": "space-frontier-server",
+  "version": "2.0.0",
+  "description": "Space Frontier 3D multiplayer server with PvP support",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.21.2",
-    "socket.io": "^4.8.1"
-  }
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["game", "multiplayer", "websocket", "threejs"],
+  "author": "SPACE FRONTIER",
+  "license": "MIT"
 }
